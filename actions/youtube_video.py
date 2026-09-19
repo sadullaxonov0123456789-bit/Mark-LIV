@@ -6,6 +6,7 @@ import time
 import subprocess
 import shutil
 from pathlib import Path
+from config import get_gemini_api_key
 from datetime import datetime
 from urllib.parse import quote_plus
 
@@ -58,8 +59,7 @@ _YT_VIDEO_FILTER = "EgIQAQ%3D%3D"
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    return get_gemini_api_key()
 
 
 def _open_url(url: str) -> None:

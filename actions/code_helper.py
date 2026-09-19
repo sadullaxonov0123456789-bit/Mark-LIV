@@ -22,8 +22,7 @@ from core import gemini
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    return get_gemini_api_key()
 
 
 def _get_gemini(tier: str = gemini.SMART):

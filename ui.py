@@ -5169,10 +5169,10 @@ class MainWindow(QMainWindow):
         self.hud.speaking = (state == "SPEAKING")
 
     def _check_config(self) -> bool:
-        if not API_FILE.exists(): return False
         try:
-            d = json.loads(API_FILE.read_text(encoding="utf-8"))
-            return bool(d.get("gemini_api_key")) and bool(d.get("os_system"))
+            from config import get_gemini_api_key
+            d = json.loads(API_FILE.read_text(encoding="utf-8")) if API_FILE.exists() else {}
+            return bool(get_gemini_api_key()) and bool(d.get("os_system"))
         except Exception:
             return False
 
@@ -5190,18 +5190,31 @@ class MainWindow(QMainWindow):
         self._overlay = ov
 
     def _on_setup_done(self, key: str, os_name: str):
+        import keyring
+
         os.makedirs(CONFIG_DIR, exist_ok=True)
+
+        keyring.set_password("MARK-LIV", "gemini_api_key", key.strip())
+
+        data = _read_full_config()
+        data.pop("gemini_api_key", None)
+        data["os_system"] = os_name
+
         API_FILE.write_text(
-            json.dumps({"gemini_api_key": key, "os_system": os_name}, indent=4),
+            json.dumps(data, indent=4),
             encoding="utf-8",
         )
+
         self._ready = True
         if self._overlay:
             self._overlay.hide()
             self._overlay = None
+
         self._apply_state("LISTENING")
         self._assistant_name = _read_full_config().get("assistant_name", "JARVIS") or "JARVIS"
-        self._log.append_log(f"SYS: Initialised. OS={os_name.upper()}. {self._assistant_name} online.")
+        self._log.append_log(
+            f"SYS: Initialised. OS={os_name.upper()}. {self._assistant_name} online."
+        )
 
 
 class _RootShim:

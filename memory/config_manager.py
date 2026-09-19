@@ -1,4 +1,5 @@
 import json
+import keyring
 import sys
 from pathlib import Path
 
@@ -20,6 +21,12 @@ def config_exists() -> bool:
 def save_api_keys(gemini_api_key: str) -> None:
     ensure_config_dir()
 
+    keyring.set_password(
+        "MARK-LIV",
+        "gemini_api_key",
+        gemini_api_key.strip()
+    )
+
     data: dict = {}
     if CONFIG_FILE.exists():
         try:
@@ -27,7 +34,7 @@ def save_api_keys(gemini_api_key: str) -> None:
         except Exception:
             data = {}
 
-    data["gemini_api_key"] = gemini_api_key.strip()
+    data.pop("gemini_api_key", None)
 
     CONFIG_FILE.write_text(
         json.dumps(data, indent=2),
@@ -44,7 +51,10 @@ def load_api_keys() -> dict:
         return {}
 
 def get_gemini_key() -> str | None:
-    return load_api_keys().get("gemini_api_key")
+    try:
+        return keyring.get_password("MARK-LIV", "gemini_api_key")
+    except Exception:
+        return None
 
 def is_configured() -> bool:
     key = get_gemini_key()
