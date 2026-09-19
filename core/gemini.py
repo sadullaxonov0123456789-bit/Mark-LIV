@@ -170,7 +170,7 @@ _cached_key: str | None = None
 # lite rung was 429ing continuously, so every call was paying for it before
 # reaching the model that could actually answer. Remembering that for a few
 # minutes turns the ladder from a cost into a saving.
-_COOLDOWN_SECONDS = 300
+_COOLDOWN_SECONDS = 900
 _cooldown: dict[str, float] = {}
 _cool_lock = threading.Lock()
 
@@ -373,7 +373,7 @@ def call(contents, tier: str = FAST, config=None,
     # is tried first, with the reasoning ladder behind it. So a user's choice is
     # honoured, and a user's choice that is having an outage still degrades to
     # something that answers instead of to nothing.
-    ladder = _LADDERS.get(tier)
+    ladder = LADDERS.get(tier)
     if ladder is None:
         ladder = (tier,) + tuple(m for m in _LADDERS[SMART] if m != tier)
 
@@ -399,10 +399,26 @@ def call(contents, tier: str = FAST, config=None,
             return cl.models.generate_content(**kwargs)
         except Exception as e:
             msg = str(e)
-            if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+            lower = msg.lower()
+
+            transient = (
+                "429" in msg
+                or "resource_exhausted" in lower
+                or "500" in msg
+                or "502" in msg
+                or "503" in msg
+                or "504" in msg
+                or "deadline_exceeded" in lower
+                or "timeout" in lower
+                or "timed out" in lower
+            )
+
+            if transient:
                 _cool(model)
-                print(f"[Gemini] {model}: out of quota — skipping it for "
-                      f"{_COOLDOWN_SECONDS // 60} minutes")
+                print(
+                    f"[Gemini] {model}: temporary failure — skipping it for "
+                    f"{_COOLDOWN_SECONDS // 60} minutes"
+                )
             else:
                 print(f"[Gemini] {model}: {type(e).__name__}: {msg[:140]}")
     return None
