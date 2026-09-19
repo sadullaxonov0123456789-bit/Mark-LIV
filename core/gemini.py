@@ -199,8 +199,8 @@ def api_key(refresh: bool = False) -> str:
         if _cached_key is not None and not refresh:
             return _cached_key
         try:
-            data = json.loads(_KEY_FILE.read_text(encoding="utf-8"))
-            _cached_key = str(data.get("gemini_api_key") or "")
+            import keyring
+            _cached_key = keyring.get_password("MARK-LIV", "gemini_api_key") or ""
         except Exception:
             _cached_key = ""
         return _cached_key

@@ -10,6 +10,12 @@ if _platform.system() == "Windows":
         def __init__(self, args, **kw):
             kw["creationflags"] = kw.get("creationflags", 0) | _subprocess.CREATE_NO_WINDOW
             kw.pop("startupinfo", None)   # drop any stale/shared STARTUPINFO
+            # Windows otherwise decodes text pipes with the active legacy code
+            # page. Child processes may emit Unicode status text, so make only
+            # text-mode pipes deterministic without changing binary streams.
+            if kw.get("text") or kw.get("universal_newlines"):
+                kw.setdefault("encoding", "utf-8")
+                kw.setdefault("errors", "replace")
             super().__init__(args, **                       kw)
 
     _subprocess.Popen = _Popen
@@ -41,6 +47,7 @@ import time
 import json
 import sys
 import traceback
+import keyring
 from datetime import datetime
 from pathlib import Path
 
@@ -283,8 +290,13 @@ def _render_prompt(template: str, values: dict) -> str:
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    key = keyring.get_password("MARK-LIV", "gemini_api_key")
+    if not key:
+        print("[JARVIS] ❌ Gemini API key not found in system vault.")
+        # We can't write to UI yet because it might not be initialized, 
+        # but the connection loop in jarvis.run() will catch the failure.
+        return ""
+    return key
 
 
 def _load_system_prompt() -> str:
@@ -2266,12 +2278,56 @@ class JarvisLive:
             print(f"[JARVIS] Reconnecting in {delay}s...")
             await asyncio.sleep(delay)
 
+def _perform_health_check():
+    import importlib.util
+    import urllib.request
+    import urllib.error
+
+    warnings = []
+
+    # Required libraries
+    for module in ("PyQt6", "google.genai", "sounddevice", "keyring"):
+        try:
+            if importlib.util.find_spec(module) is None:
+                warnings.append(f"Missing component: {module}")
+        except Exception:
+            warnings.append(f"Could not verify component: {module}")
+
+    # Gemini connectivity — warning only
+    try:
+        urllib.request.urlopen(
+            "https://generativelanguage.googleapis.com",
+            timeout=2,
+        )
+    except urllib.error.HTTPError:
+        # Server responded, so connectivity exists
+        pass
+    except Exception:
+        warnings.append("Gemini API unreachable or internet unavailable.")
+
+    # Ollama connectivity — warning only
+    try:
+        urllib.request.urlopen(
+            "http://127.0.0.1:11434",
+            timeout=1,
+        )
+    except Exception:
+        warnings.append("Ollama is not reachable.")
+
+    for warning in warnings:
+        print(f"[JARVIS] ⚠ {warning}")
+
+    return warnings
+
+
 def main():
     ui = JarvisUI("face.png")
 
     def runner():
+        _perform_health_check()
         ui.wait_for_api_key()
         jarvis = JarvisLive(ui)
+
         try:
             asyncio.run(jarvis.run())
         except KeyboardInterrupt:
