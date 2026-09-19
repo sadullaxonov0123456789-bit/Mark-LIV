@@ -3,6 +3,7 @@ import json
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from config import get_gemini_api_key
 # ── Gemini grounding quota circuit breaker ────────────────────────────────────
@@ -146,22 +147,42 @@ def _ddg_news(query: str, max_results: int = 8) -> list[dict]:
     """DDG news search — returns actual articles, not website homepages."""
     DDGS = _get_ddgs()
     results = []
+
     try:
         with DDGS() as ddgs:
             for r in ddgs.news(query, max_results=max_results):
                 results.append({
-                    "title":   r.get("title",  ""),
-                    "snippet": r.get("body",   ""),
-                    "url":     r.get("url",    ""),
-                    "source":  r.get("source", ""),
+                    "title": r.get("title", ""),
+                    "snippet": r.get("body", ""),
+                    "url": r.get("url", ""),
+                    "source": r.get("source", ""),
+                    "date": r.get("date", ""),
                 })
     except Exception as e:
         print(f"[WebSearch] ⚠️ DDG news() failed ({e}) — falling back to text search")
-    # Also covers the legacy-package case, where news() returns an empty list
-    # instead of raising.
+
     if not results:
         results = _ddg_search(query, max_results=max_results)
-    return results
+
+    unique = []
+    seen = set()
+
+    for r in results:
+        key = (
+            r.get("title", "").strip().lower(),
+            r.get("url", "").strip(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(r)
+
+    unique.sort(
+        key=lambda r: str(r.get("date") or ""),
+        reverse=True,
+    )
+
+    return unique
 
 
 def _format_ddg(query: str, results: list[dict]) -> str:
@@ -176,7 +197,17 @@ def _format_ddg(query: str, results: list[dict]) -> str:
         lines.append("")
     return "\n".join(lines).strip()
 
-
+def _format_news_date(value) -> str:
+    if not value:
+        return ""
+    try:
+        if isinstance(value, datetime):
+            dt = value
+        else:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return dt.strftime("%d %b %Y, %H:%M")
+    except (ValueError, TypeError):
+        return str(value)
 def _format_news(query: str, results: list[dict]) -> str:
     if not results:
         return f"No news found for: {query}"
@@ -187,7 +218,8 @@ def _format_news(query: str, results: list[dict]) -> str:
         if not title:
             continue
         src = f"  [{r['source']}]" if r.get("source") else ""
-        lines.append(f"{i}. {title}{src}")
+        date = f"  ({_format_news_date(r['date'])})" if r.get("date") else ""
+        lines.append(f"{i}. {title}{src}{date}")
         if r.get("snippet"):
             lines.append(f"   {r['snippet'][:140]}")
         if r.get("url"):
