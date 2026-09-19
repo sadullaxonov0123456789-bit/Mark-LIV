@@ -50,3 +50,6 @@ downloads/
 screenshots/
 
 config/certs/
+
+.cursor/
+.gemini/
