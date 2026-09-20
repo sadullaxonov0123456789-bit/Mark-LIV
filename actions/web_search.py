@@ -213,6 +213,74 @@ def _format_ddg(query: str, results: list[dict]) -> str:
         lines.append("")
     return "\n".join(lines).strip()
 
+def _format_research_results(query: str, results: list[dict]) -> str:
+    if not results:
+        return f"No research results found for: {query}"
+
+    findings = []
+    finding_word_sets = []
+
+    for r in results:
+        title = r.get("title", "").strip()
+        snippet = r.get("snippet", "").strip()
+
+        text = snippet or title
+        if not text:
+            continue
+
+        words = {
+            word.strip(".,:;!?()[]{}\"'").lower()
+            for word in text.split()
+            if len(word) > 3
+        }
+
+        is_duplicate = False
+
+        for previous_words in finding_word_sets:
+            union = words | previous_words
+            if not union:
+                continue
+
+            similarity = len(words & previous_words) / len(union)
+
+            if similarity >= 0.55:
+                is_duplicate = True
+                break
+
+        if is_duplicate:
+            continue
+
+        finding_word_sets.append(words)
+        findings.append({
+            "title": title,
+            "snippet": snippet,
+        })
+
+        if len(findings) >= 5:
+            break
+
+    lines = [f"Research summary: {query}\n"]
+    lines.append("Key findings:")
+
+    for i, finding in enumerate(findings, 1):
+        title = finding["title"]
+        snippet = finding["snippet"]
+
+        if title:
+            lines.append(f"{i}. {title}")
+        if snippet:
+            lines.append(f"   {snippet[:320]}")
+
+    lines.append("\nTrusted sources:")
+
+    for i, r in enumerate(results[:8], 1):
+        title = r.get("title", "").strip()
+        url = r.get("url", "").strip()
+
+        if url:
+            lines.append(f"{i}. {title} — {url}")
+
+    return "\n".join(lines).strip()
 def _format_news_date(value) -> str:
     if not value:
         return ""
@@ -379,8 +447,7 @@ def _research(query: str) -> str:
     key=lambda r: _source_priority(r.get("url", "")),
     reverse=True,
     )
-        return _format_ddg(query, results)
-
+        return _format_research_results(query, results)
 
 def _price(query: str) -> str:
     """Product price lookup — searches for current market prices."""
