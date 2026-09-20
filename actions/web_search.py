@@ -5,6 +5,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 from config import get_gemini_api_key
 # ── Gemini grounding quota circuit breaker ────────────────────────────────────
 # The google_search grounding tool has its own small quota, separate from plain
@@ -130,18 +131,33 @@ def _get_ddgs():
 def _ddg_search(query: str, max_results: int = 6) -> list[dict]:
     DDGS = _get_ddgs()
     results = []
+
     try:
         with DDGS() as ddgs:
             for r in ddgs.text(query, max_results=max_results):
                 results.append({
-                    "title":   r.get("title",  ""),
-                    "snippet": r.get("body",   ""),
-                    "url":     r.get("href",   ""),
+                    "title": r.get("title", ""),
+                    "snippet": r.get("body", ""),
+                    "url": r.get("href", ""),
                 })
     except Exception as e:
         print(f"[WebSearch] ⚠️ DDG text() failed: {e}")
-    return results
 
+    unique = []
+    seen = set()
+
+    for r in results:
+        title_key = r.get("title", "").strip().lower()
+        url_key = r.get("url", "").split("?")[0].rstrip("/").lower()
+        key = url_key or title_key
+
+        if not key or key in seen:
+            continue
+
+        seen.add(key)
+        unique.append(r)
+
+    return unique
 
 def _ddg_news(query: str, max_results: int = 8) -> list[dict]:
     """DDG news search — returns actual articles, not website homepages."""
@@ -315,6 +331,26 @@ def _news(query: str) -> str:
     return f"No news found for: {query}"
 
 
+def _source_priority(url: str) -> int:
+    host = urlparse(url).netloc.lower().removeprefix("www.")
+
+    trusted = (
+        "reuters.com",
+        "apnews.com",
+        "bbc.com",
+        "openai.com",
+        "microsoft.com",
+        "google.com",
+        "who.int",
+        "un.org",
+        "nature.com",
+    )
+
+    if host.endswith(".gov") or host.endswith(".edu"):
+        return 3
+    if any(host == domain or host.endswith("." + domain) for domain in trusted):
+        return 2
+    return 1
 def _research(query: str) -> str:
     """
     Deep dive — asks Gemini for a comprehensive answer with context.
@@ -339,6 +375,10 @@ def _research(query: str) -> str:
     except Exception as e:
         _log_gemini_failure("Gemini research", e)
         results = _ddg_search(query, max_results=10)
+        results.sort(
+    key=lambda r: _source_priority(r.get("url", "")),
+    reverse=True,
+    )
         return _format_ddg(query, results)
 
 
