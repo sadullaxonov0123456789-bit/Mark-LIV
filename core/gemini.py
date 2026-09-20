@@ -375,15 +375,18 @@ def call(contents, tier: str = FAST, config=None,
     # something that answers instead of to nothing.
     ladder = LADDERS.get(tier)
     if ladder is None:
-        ladder = (tier,) + tuple(m for m in _LADDERS[SMART] if m != tier)
-
+        ladder = (tier,) + tuple(m for m in LADDERS[SMART] if m != tier)
     resolved_key = key or api_key()
     if not resolved_key:
         print("[Gemini] no Gemini API key is configured")
         return None
 
     cl = None
-    tried = [m for m in ladder if not _cooling(m)] or list(ladder)
+    tried = [m for m in ladder if not _cooling(m)]
+    if not tried:
+        print("[Gemini] all models are currently in cooldown")
+        return None
+
     for model in tried:
         try:
             if model == LIVE:

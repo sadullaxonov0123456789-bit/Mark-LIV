@@ -321,9 +321,19 @@ def _research(query: str) -> str:
     Falls back to a wider DDG fetch.
     """
     research_query = (
-        f"Comprehensive, detailed explanation of: {query}. "
-        "Include background context, key facts, current state, and important nuances."
+        f"Research this topic using current web information: {query}\n\n"
+        "Provide:\n"
+        "1. A clear direct answer\n"
+        "2. Key verified facts\n"
+        "3. Latest/current information with relevant dates\n"
+        "4. Important background and context\n"
+        "5. Uncertainties or conflicting claims, if any\n"
+        "6. Source names and links when available\n\n"
+        "Prefer official, primary, and reputable sources. "
+        "Clearly distinguish verified facts from claims or estimates. "
+        "Do not invent information that cannot be verified."
     )
+
     try:
         return _gemini_search(research_query)
     except Exception as e:
